@@ -8,7 +8,6 @@ LD      := ld
 
 BUILD_DIR := build
 SRC_DIR   := .
-OUT_DIR   := ..
 
 # Files
 
@@ -64,4 +63,4 @@ loader: $(ASM_SRC) flags | $(BUILD_DIR)
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(FLAGS_INC)
-	rm -f $(OUT_DIR)/load_elf_binary
+	rm -f load_elf_binary
