@@ -6,6 +6,7 @@
 #include <elf.h> 	// for elf magic number
 #include <asm/unistd_64.h> // for syscall numbers
 #include <stdio.h>  // for file operations and printing, etc
+#include <sys/mman.h>  // for mmap flags
 
 // int fprintf(FILE *restrict stream, const char *restrict format, ...);
 #define INSERT(format_str) fprintf(include_file, format_str)
@@ -46,8 +47,17 @@ int main(){
 
 	/**** flags and constants needed for mmap and munmap ****/
 	{
-		fprintf(include_file, "\n; ---- map constants ----\n");
+		fprintf(include_file, "\n; ---- map flags ----\n");
 		INSERT( CREATE_ASM_CONSTANT(PROT_EXEC) );
+		INSERT( CREATE_ASM_CONSTANT(PROT_READ) );
+		INSERT( CREATE_ASM_CONSTANT(PROT_WRITE) );
+		INSERT( CREATE_ASM_CONSTANT(PROT_NONE) );
+
+		INSERT( CREATE_ASM_CONSTANT(MAP_SHARED) );
+		INSERT( CREATE_ASM_CONSTANT(MAP_SHARED_VALIDATE) );
+		INSERT( CREATE_ASM_CONSTANT(MAP_PRIVATE) );
+		INSERT( CREATE_ASM_CONSTANT(MAP_ANONYMOUS) );
+		INSERT( CREATE_ASM_CONSTANT(MAP_STACK) );
 	}
 	
 	/**** write elf magic number into the include file ****/
