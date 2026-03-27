@@ -12,10 +12,35 @@ section .bss
 section .data
     FATAL_ERROR_STR: db "Fatal error occured!", 0x0A, 0x00
     FATAL_ERROR_LEN equ $ - FATAL_ERROR_STR  ; len of fatal error string
+    ARGUMENTS_ERROR_STR: db "Received invalid sequenze arguments", 0x0A, "Usage: load_efi_binary <executable-path>", 0x0A, 0x00
+    ARGUMENTS_ERROR_LEN equ $ - ARGUMENTS_ERROR_STR  ; len of arguments1 error string
 section .text
 
 %include "flags.asm.inc"
 
+; Macro for doing the prolog
+%macro ENTER 0
+    push    rbp
+    mov     rbp, rsp
+    ; Align the stack to a mod 16 boundary
+    and     rsp, -16
+%endmacro
+
+
+; procedure for printing text - we follow the abi system v conventions here
+; we expect the string to be printed to be null-terminated and put into rdi
+; we expect the len of the string in rsi
+print_text:
+    ENTER
+    mov     rdx, rsi        ; param: nbyte 
+    mov     rsi, rdi        ; param: buf
+    mov     rax, __NR_write ; move syscall number into rax
+    mov     rdi, STDOUT     ; param: fildes -> stdout -> 1
+    syscall                 ; print the error string
+    ; if the write failed, we just return with rax beeing the negative value
+    .return: 
+        leave
+        ret
 
 ; Custome implementation of load_elf_binary
 ; Note that we use _start, therefore we dont have any glibc functionality
@@ -23,15 +48,16 @@ section .text
 ; we just take a simple char* filename as argument:     int load_elf_binary(char* filename)
 global _start
 _start: 
-    ; Prolog
-    push    rbp
-    mov     rbp, rsp
-    ; Align the stack to a mod 16 boundary
-    and     rsp, -16
+    ENTER
 
     ; **** Save the filename argument into the filename variable ****
-    ; first 8 bytes after rbp for return address (garbage), 
-    ; second 8 bytes after rbp for the executable filename (skip it) and finally the third 8 bytes represent the char* filename argument
+    ; rbp+8  --> argc
+    ; rbp+16 --> executable filename (skip it) 
+    ; rbp+24 --> char* filename argument
+    ; check if we received enough arguments
+    cmp     [rbp+8*2], 2    ; check if argc is equal 2
+    jne     .print_usage    ; print the usage and exit program
+    ; else continue with execution
     mov     rsi, [rbp+8*3]  ; move argument char* filename into rsi
     mov     [ELF_FILENAME], rsi ; save rsi into filename variable
 
@@ -67,13 +93,16 @@ _start:
     jmp     .return         ; per default skip the error section
     .error: 
         ; do some error printing and debugging information ...
-        ; ssize_t write(int fildes, const void *buf, size_t nbyte);
-        mov     rax, __NR_write         ; move syscall number into rax
-        mov     rdi, STDOUT             ; param: fildes -> stdout -> 1
-        mov     rsi, FATAL_ERROR_STR    ; param: buf 
-        mov     rdx, FATAL_ERROR_LEN    ; param: nbyte
-        syscall                         ; print the error string
-        ; fall through to return section
+        mov     rdi, FATAL_ERROR_STR    ; param: buf 
+        mov     rsi, FATAL_ERROR_LEN    ; param: nbyte
+        call    print_text      ; print that shit
+        ; as for now and also probably in the future, this is all we have on debuggin, sry
+        jmp     .return         ; jump to return section
+    .print_usage:  ; print the usage and exit
+        mov     rdi, ARGUMENTS_ERROR_STR   ; move string to print into destination index
+        mov     rsi, ARGUMENTS_ERROR_LEN   ; move len of string into source index
+        call    print_text      ; print it
+        jmp     .return         ; jmp to return section
     .return: 
         ; Simple epilog
         leave
