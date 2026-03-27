@@ -9,11 +9,11 @@ BITS 64  ; ensure 64bit
 section .bss
     ELF_FILENAME:   resq 0x01   ; quad word variable to store the char pointer to the filename 
     ELF_FILE_FD:    resq 0x01   ; quad word variable to store the file descriptor of the efi file
+    IO_BUFFER:      resq 0x01   ; quad word variable to store the char pointer to the buffer
 section .data
-    FATAL_ERROR_STR: db "Fatal error occured!", 0x0A, 0x00
+    FATAL_ERROR_STR: db "Fatal error occured!", 0x0A
     FATAL_ERROR_LEN equ $ - FATAL_ERROR_STR  ; len of fatal error string
-    ARGUMENTS_ERROR_STR: db "Received invalid sequenze arguments", 0x0A, "Usage: load_efi_binary <executable-path>", 0x0A, 0x00
-    ARGUMENTS_ERROR_LEN equ $ - ARGUMENTS_ERROR_STR  ; len of arguments1 error string
+    
 section .text
 
 %include "flags.asm.inc"
@@ -27,8 +27,8 @@ section .text
 %endmacro
 
 
-; procedure for printing text - we follow the abi system v conventions here
-; we expect the string to be printed to be null-terminated and put into rdi
+; procedure for printing text
+; we expect the string to be printed to NOT be null-terminated, and put into rdi
 ; we expect the len of the string in rsi
 print_text:
     ENTER
@@ -55,7 +55,7 @@ _start:
     ; rbp+16 --> executable filename (skip it) 
     ; rbp+24 --> char* filename argument
     ; check if we received enough arguments
-    cmp     [rbp+8*2], 2    ; check if argc is equal 2
+    cmp     qword [rbp+8*2], 0x02   ; check if argc is equal 2
     jne     .print_usage    ; print the usage and exit program
     ; else continue with execution
     mov     rsi, [rbp+8*3]  ; move argument char* filename into rsi
@@ -74,6 +74,7 @@ _start:
     syscall                 ; allocate a block of memory BUFSIZ bytes in size
     test    rax, rax        ; check if mmap was executed successfully
     js      .error          ; if rax is a neg number, handle the error
+    mov     [IO_BUFFER], rax; move pointer to allocated space into variable
 
     ; First open the efi file  - creating a file handle, initializing structs and pointers - for reading its properties using the following kernel functions:
     ; Opening the ELF file: int open(const char *path, int oflag, ...);
@@ -84,12 +85,20 @@ _start:
         syscall                 ; do open syscall --> rax 
         test    rax, rax        ; rest if rax is negativ
         js      .error          ; jmp to error section and handle the error
-        ; else fall through to consistency check section
+        ; else fall through
+        mov     [ELF_FILE_FD], rax  ; move file_fd into variable
 
-    ; Second make some consistency checks - magic number, ...
+    ; Second, make some consistency checks - magic number, ...
+    ; ssize_t read(int fildes, void *buf, size_t nbyte);
     .check_efi_consistency:
+        mov     rax, __NR_read  ; put syscall number into rax
+        mov     rdi, [ELF_FILE_FD]  ; param: fildes
+        mov     rsi, IO_BUFFER  ; param: buf
+        mov     rdx, 0x04       ; param: nbyte --> elf number length is 4 bytes
+        syscall                 ; read the first 4 byte into the buffer
+        cmp     [IO_BUFFER+0], ELFMAG0  ; compare the first byte for a match
+        jne     .error          ; if it does not match, print error and exit
 
-    
     jmp     .return         ; per default skip the error section
     .error: 
         ; do some error printing and debugging information ...
