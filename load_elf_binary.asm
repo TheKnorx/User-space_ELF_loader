@@ -17,6 +17,7 @@ section .data
 section .text
 
 %include "flags.asm.inc"
+%include "error_strings.asm.inc"
 
 ; Macro for doing the prolog
 %macro ENTER 0
@@ -79,39 +80,40 @@ _start:
     ; First open the efi file  - creating a file handle, initializing structs and pointers - for reading its properties using the following kernel functions:
     ; Opening the ELF file: int open(const char *path, int oflag, ...);
     .open_efi:
-        mov     rax, __NR_open  ; open syscall number
-        mov     rdi, ELF_FILENAME  ; parameter char* path
-        mov     rsi, O_RDONLY   ; open efi for read-only
-        syscall                 ; do open syscall --> rax 
-        test    rax, rax        ; rest if rax is negativ
-        js      .error          ; jmp to error section and handle the error
+        mov     rax, __NR_open      ; open syscall number
+        mov     rdi, ELF_FILENAME   ; parameter char* path
+        mov     rsi, O_RDONLY       ; open efi for read-only
+        syscall             ; do open syscall --> rax 
+        test    rax, rax    ; rest if rax is negativ
+        js      .error      ; jmp to error section and handle the error
         ; else fall through
         mov     [ELF_FILE_FD], rax  ; move file_fd into variable
 
     ; Second, make some consistency checks - magic number, ...
     ; ssize_t read(int fildes, void *buf, size_t nbyte);
     .check_efi_consistency:
-        mov     rax, __NR_read  ; put syscall number into rax
+        mov     rax, __NR_read      ; put syscall number into rax
         mov     rdi, [ELF_FILE_FD]  ; param: fildes
-        mov     rsi, IO_BUFFER  ; param: buf
-        mov     rdx, 0x04       ; param: nbyte --> elf number length is 4 bytes
-        syscall                 ; read the first 4 byte into the buffer
-        cmp     [IO_BUFFER+0], ELFMAG0  ; compare the first byte for a match
-        jne     .error          ; if it does not match, print error and exit
+        mov     rsi, IO_BUFFER      ; param: buf
+        mov     rdx, 0x04   ; param: nbyte --> elf number length is 4 bytes
+        syscall             ; read the first 4 byte into the buffer
+        cmp     byte [IO_BUFFER+0], ELFMAG0  ; compare the first byte for a match
+        jne     .error      ; if it does not match, print error and exit
+        ; ...
 
-    jmp     .return         ; per default skip the error section
+    jmp     .return         ; per default skip all the following sections and jmp straigth to the return section
     .error: 
         ; do some error printing and debugging information ...
         mov     rdi, FATAL_ERROR_STR    ; param: buf 
         mov     rsi, FATAL_ERROR_LEN    ; param: nbyte
-        call    print_text      ; print that shit
+        call    print_text  ; print that shit
         ; as for now and also probably in the future, this is all we have on debuggin, sry
-        jmp     .return         ; jump to return section
+        jmp     .return     ; jump to return section
     .print_usage:  ; print the usage and exit
         mov     rdi, ARGUMENTS_ERROR_STR   ; move string to print into destination index
         mov     rsi, ARGUMENTS_ERROR_LEN   ; move len of string into source index
-        call    print_text      ; print it
-        jmp     .return         ; jmp to return section
+        call    print_text  ; print it
+        jmp     .return     ; jmp to return section
     .return: 
         ; Simple epilog
         leave
