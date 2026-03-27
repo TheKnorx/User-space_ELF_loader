@@ -36,6 +36,7 @@ int main(){
 		INSERT( CREATE_ASM_CONSTANT(__NR_write) );
 		INSERT( CREATE_ASM_CONSTANT(__NR_open) );
 		INSERT( CREATE_ASM_CONSTANT(__NR_mmap) );
+		INSERT( CREATE_ASM_CONSTANT(__NR_read) );
 	}
 	/**** general constants ****/
 	{
