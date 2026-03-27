@@ -5,13 +5,19 @@
 #include <fcntl.h>  // oflags for open syscall
 #include <elf.h> 	// for elf magic number
 #include <asm/unistd_64.h> // for syscall numbers
-#include <stdio.h>  // for file operations and printing, etc
+#include <stdio.h>  // for file operations and printing, and std* constants
 #include <sys/mman.h>  // for mmap flags
 
 // int fprintf(FILE *restrict stream, const char *restrict format, ...);
 #define INSERT(format_str) fprintf(include_file, format_str)
 #define CREATE_ASM_CONSTANT(CONST) "%s equ %d\n", #CONST, CONST
 #define CREATE_ASM_VARIABLE(VAR) "%s db \"%s\"\n", #VAR, VAR
+
+#ifndef _MAP_FAILED
+#define _MAP_FAILED (-1)
+#endif
+#define STDOUT 1
+
 
 int main(){
 	const char* filename = "flags.asm.inc";
@@ -27,6 +33,7 @@ int main(){
 	{
 		INSERT( "; ---- syscall numbers ----\n" );
 		INSERT( CREATE_ASM_CONSTANT(__NR_read) );
+		INSERT( CREATE_ASM_CONSTANT(__NR_write) );
 		INSERT( CREATE_ASM_CONSTANT(__NR_open) );
 		INSERT( CREATE_ASM_CONSTANT(__NR_mmap) );
 	}
@@ -34,6 +41,7 @@ int main(){
 	{
 		INSERT( "\n; ---- general constants ----\n" );
 		INSERT( CREATE_ASM_CONSTANT(BUFSIZ) );
+		INSERT( CREATE_ASM_CONSTANT(STDOUT) );
 	}
 
 	/**** write all the flags of open() into the include file ****/
@@ -58,6 +66,8 @@ int main(){
 		INSERT( CREATE_ASM_CONSTANT(MAP_PRIVATE) );
 		INSERT( CREATE_ASM_CONSTANT(MAP_ANONYMOUS) );
 		INSERT( CREATE_ASM_CONSTANT(MAP_STACK) );
+
+		INSERT( CREATE_ASM_CONSTANT(_MAP_FAILED));
 	}
 	
 	/**** write elf magic number into the include file ****/
