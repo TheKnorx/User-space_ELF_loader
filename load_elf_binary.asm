@@ -3,6 +3,8 @@
 
 ; Syscall register assignment: 
 ; rdi - rsi - rdx - r10 - r8 - r9 - rax = Syscall-number
+; Syscall clobbers: 
+; RAX, RCX, R11
 
 BITS 64  ; ensure 64bit
 
@@ -10,14 +12,15 @@ section .bss
     ELF_FILENAME:   resq 0x01   ; quad word variable to store the char pointer to the filename 
     ELF_FILE_FD:    resq 0x01   ; quad word variable to store the file descriptor of the efi file
     IO_BUFFER:      resq 0x01   ; quad word variable to store the char pointer to the buffer
+    IO_BUFFER_PTR:  resq 0x01   ; quad word variable to store read/write index to IO-Buffer into
+    ERRNO:          resq 0x01   ; C-style errno number variable 
 section .data
-    FATAL_ERROR_STR: db "Fatal error occured!", 0x0A
-    FATAL_ERROR_LEN equ $ - FATAL_ERROR_STR  ; len of fatal error string
-    
+    FATAL_ERROR_STR: db "Fatal error occured!", 0x0A, 0x00
+    ARGUMENTS_ERROR_STR: db "Usage: ./load_elf_binary.asm <path/to/binary>", 0x0A, 0x00
 section .text
 
 %include "flags.asm.inc"
-%include "error_strings.asm.inc"
+%include "asm-generic_errno-base.lib.asm"
 
 ; Macro for doing the prolog
 %macro ENTER 0
@@ -27,13 +30,31 @@ section .text
     and     rsp, -16
 %endmacro
 
+; Macro for setting the sys_errno variable with the negated value in rax
+%macro SET_ERRNO 0
+    neg     eax             ; negate rax
+    mov     [SYS_ERRNO], eax; store the value in eax into sys_errno
+%endmacro
+
 
 ; procedure for printing text
-; we expect the string to be printed to NOT be null-terminated, and put into rdi
-; we expect the len of the string in rsi
+; we expect the string to be printed TO BE null-terminated, and put into rdi
 print_text:
     ENTER
-    mov     rdx, rsi        ; param: nbyte 
+    ; first find out how long the string is
+    mov     rsi, rdi        ; move string pointer into source index 
+    mov     al, -1          ; move into al anything except the null terminator
+    cld                     ; clear direction flag for lodsb to work correctly
+    .for:  ; count the length of the string
+        test    al, al      ; check if al is the null terminator
+        js      .end_for    ; if we reached the null terminator, end the loop
+        lodsb               ; load byte at byte [rsi] into al and increment si
+        jmp     .for        ; continue the loop
+    .end_for:  ; label to end the for loop
+    ; now calculate the length of the string
+    sub     rsi, rdi        ; do so by subtracting the pointer, pointing to the null terminator from the base of the string
+
+    mov     rdx, rsi        ; param: nbyte -> calculated by the sub
     mov     rsi, rdi        ; param: buf
     mov     rax, __NR_write ; move syscall number into rax
     mov     rdi, STDOUT     ; param: fildes -> stdout -> 1
@@ -42,6 +63,10 @@ print_text:
     .return: 
         leave
         ret
+
+; procedure that mirrors behavior to to C-function perror
+print_error:
+
 
 ; Custome implementation of load_elf_binary
 ; Note that we use _start, therefore we dont have any glibc functionality
@@ -105,13 +130,11 @@ _start:
     .error: 
         ; do some error printing and debugging information ...
         mov     rdi, FATAL_ERROR_STR    ; param: buf 
-        mov     rsi, FATAL_ERROR_LEN    ; param: nbyte
         call    print_text  ; print that shit
         ; as for now and also probably in the future, this is all we have on debuggin, sry
         jmp     .return     ; jump to return section
     .print_usage:  ; print the usage and exit
         mov     rdi, ARGUMENTS_ERROR_STR   ; move string to print into destination index
-        mov     rsi, ARGUMENTS_ERROR_LEN   ; move len of string into source index
         call    print_text  ; print it
         jmp     .return     ; jmp to return section
     .return: 
